@@ -1,0 +1,98 @@
+name: Flutter CI/CD to Vercel
+
+on:
+  push:
+    branches:
+      - staging
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # ========== BUILD FLUTTER WEB ==========
+  build_flutter:
+    name: Build Flutter Web App
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Analyze Code
+        run: flutter analyze
+
+      - name: Run Tests
+        run: flutter test
+
+      - name: Build Web App
+        run: |
+          flutter build web --release --web-renderer html
+          echo "✅ Flutter web build completed"
+          ls -la build/web/
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: build/web/
+          retention-days: 1
+
+  # ========== DEPLOY TO VERCEL STAGING ==========
+  deploy_staging:
+    name: Deploy to Vercel (Staging)
+    runs-on: ubuntu-latest
+    needs: build_flutter
+    if: github.ref == 'refs/heads/staging'
+    
+    steps:
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: ./deploy
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--yes --confirm'
+          working-directory: ./deploy
+          alias-domains: |
+            flutter-shopping-app-staging.vercel.app
+
+  # ========== DEPLOY TO VERCEL PRODUCTION ==========
+  deploy_production:
+    name: Deploy to Vercel (Production)
+    runs-on: ubuntu-latest
+    needs: build_flutter
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Download Build Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: ./deploy
+
+      - name: Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod --yes --confirm'
+          working-directory: ./deploy
+          alias-domains: |
+            flutter-shopping-app.vercel.app
